@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Кіт + Орбіти + фото</title>
+  <style>
+    :root{
+      --bg1: #050508;
+      --accent: #fd6e72;
+      --catcol: #745260;
+      --light: #fdf9de;
+    }
+    html,body { height:100%; margin:0; background:var(--bg1); font-family:Arial, Helvetica, sans-serif; color:#fff; overflow:hidden; }
+
+    /* Canvas (орбіти) — повноекранний */
+    canvas#c {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 1; /* за котом та фото */
+    }
+
+    /* Кіт у центрі - якщо є файл cat_center.png, він буде показаний; якщо ні, просто прозорий блок */
+    .cat {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%,-50%);
+      width: 200px;
+      height: 160px;
+      z-index: 6;
+      pointer-events: none;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    /* якщо хочеш показувати через фонове зображення, залишимо можливість */
+    .cat .img {
+      width: 180px;
+      height: 140px;
+      background-image: url('cat_center.png'); /* optional */
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position:center;
+      border-radius:8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    }
+    /* Фолбек: якщо нема центрального зображення, рендеримо CSS-кішку */
+    .cat .fallback {
+      width: 160px;
+      height: 80px;
+      position: relative;
+      pointer-events: none;
+    }
+    .fallback .body {
+      width:160px; height:80px; background:var(--catcol);
+      border-radius:80px 80px 30px 30px;
+      transform-origin:center;
+      animation:bodyAnim 12s infinite;
+    }
+    .fallback .head {
+      position:absolute; left:-45px; top:8px; width:84px; height:60px; background:var(--catcol); border-radius:50%;
+    }
+    .fallback .ear {
+      position:absolute; width:0;height:0; border-left:12px solid transparent; border-right:12px solid transparent; border-bottom:20px solid var(--catcol);
+      top:-6px;
+    }
+    .fallback .ear.left { left:6px; animation:earLeft 12s infinite; }
+    .fallback .ear.right { left:36px; animation:earRight 12s infinite; }
+    .fallback .tail { position:absolute; right:-18px; bottom:-10px; width:16px; height:60px; background:var(--catcol); border-radius:12px; transform-origin:left bottom; animation:tailAnim 12s infinite; }
+    @keyframes tailAnim { 0%{transform:rotate(0)}20%{transform:rotate(18deg)}40%{transform:rotate(-8deg)}60%{transform:rotate(8deg)}100%{transform:rotate(0)} }
+    @keyframes bodyAnim { 0%{transform:scaleY(1)}25%{transform:scaleY(1.12)}50%{transform:scaleY(1)}75%{transform:scaleY(1.08)}100%{transform:scaleY(1)} }
+    @keyframes earLeft { 0%{transform:rotate(-20deg)}20%{transform:rotate(-6deg)}40%{transform:rotate(-30deg)}60%{transform:rotate(-6deg)}100%{transform:rotate(-20deg)} }
+    @keyframes earRight { 0%{transform:rotateZ(-16deg)}20%{transform:rotateZ(-6deg)}40%{transform:rotateZ(-30deg)}60%{transform:rotateZ(-6deg)}100%{transform:rotateZ(-16deg)} }
+
+    /* Images block (вирівняні блоки з background-image) */
+    .images {
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 12;
+      display:flex;
+      gap:14px;
+      align-items:center;
+      justify-content:center;
+      padding:10px;
+      background: rgba(0,0,0,0.18);
+      border-radius:12px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+    }
+
+    .photo {
+      width: 220px;
+      height: 150px;
+      border-radius: 8px;
+      background-color: #222;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: cover;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      border: 2px solid rgba(255,255,255,0.08);
+      flex: 0 0 auto;
+    }
+
+    @media (max-width:900px){ .photo{ width:170px; height:120px; } }
+    @media (max-width:520px){ .images{ flex-direction:column; gap:8px; padding:8px; bottom:8px; } .photo{ width:140px; height:100px; } }
+
+    /* Невелика підказка / кнопки (за потреби) */
+    .control {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 20;
+      background: rgba(0,0,0,0.4);
+      color:#fff;
+      padding:8px 10px;
+      border-radius:8px;
+      font-size:13px;
+      backdrop-filter: blur(4px);
+    }
+    .control button { margin-left:8px; padding:6px 8px; border-radius:6px; border:none; cursor:pointer; background:var(--accent); color:#fff; }
+  </style>
+</head>
+<body>
+
+  <!-- Canvas для анімації -->
+  <canvas id="c"></canvas>
+
+  <!-- Центральний кіт: якщо є cat_center.png, він покаже його, інакше покаже CSS fallback -->
+  <div class="cat" aria-hidden="true">
+    <div class="img" style="display:none;"></div>
+    <div class="fallback" id="fallbackCat" style="display:block;">
+      <div class="body"></div>
+      <div class="head"></div>
+      <div class="ear left"></div>
+      <div class="ear right"></div>
+      <div class="tail"></div>
+    </div>
+  </div>
+
+  <!-- необов'язкові контролі (видно, можна прибрати) -->
+  <div class="control">
+    <span>Trails</span>
+    <button id="toggleTrail">Toggle</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+
+  <!-- Блок трьох фото -->
+  <div class="images" role="group" aria-label="Photos">
+    <div class="photo" style="background-image: url('cat.png');" aria-label="cat png"></div>
+    <div class="photo" style="background-image: url('cat.jpg');" aria-label="cat jpg"></div>
+    <div class="photo" style="background-image: url('cat.webp');" aria-label="cat webp"></div>
+  </div>
+
+<script>
+/* Робоча, стабільна анімація орбіт на canvas.
+   Підтримує resize, pointer interaction (mousedown+drag), trailing toggle і clear. */
+
+(function(){
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  let DPR = window.devicePixelRatio || 1;
+
+  function resize(){
+    DPR = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(window.innerWidth * DPR);
+    canvas.height = Math.floor(window.innerHeight * DPR);
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  ctx.lineCap = 'round';
+
+  // Orb class
+  function Orb(x,y,centerX,centerY){
+    this.x = x; this.y = y;
+    this.lastX = x; this.lastY = y;
+    this.centerX = centerX; this.centerY = centerY;
+    const dx = centerX - x, dy = centerY - y;
+    this.radius = Math.sqrt(dx*dx + dy*dy);
+    this.angle = Math.atan2(dy, dx) + Math.PI/2;
+    this.size = (Math.random()*2 + 1) * 0.6;
+    this.speed = ((Math.random()*5 + 5)/1000) * (this.radius/750) + 0.015;
+    this.colorAngle = 0;
+  }
+  Orb.prototype.update = function(){
+    this.lastX = this.x; this.lastY = this.y;
+    this.x = this.centerX + Math.sin(-this.angle) * this.radius;
+    this.y = this.centerY + Math.cos(-this.angle) * this.radius;
+    this.angle += this.speed;
+    this.colorAngle = Math.floor(Math.atan2(this.y - this.centerY, this.x - this.centerX) * 180/Math.PI) || 0;
+  };
+  Orb.prototype.draw = function(){
+    ctx.strokeStyle = 'hsla(' + this.colorAngle + ',100%,50%,1)';
+    ctx.lineWidth = this.size;
+    ctx.beginPath();
+    ctx.moveTo(this.lastX, this.lastY);
+    ctx.lineTo(this.x, this.y);
+    ctx.stroke();
+  };
+
+  const orbs = [];
+  function centerX(){ return window.innerWidth/2; }
+  function centerY(){ return window.innerHeight/2; }
+
+  function createOrb(mx,my){
+    orbs.push(new Orb(mx,my, centerX(), centerY()));
+  }
+
+  // initialize many orbs
+  for(let i=0;i<120;i++){
+    createOrb(window.innerWidth/2, window.innerHeight/2 + (i*2));
+  }
+
+  // interactions
+  let dragging = false;
+  let trail = true;
+
+  canvas.addEventListener('mousedown', function(e){
+    const rect = canvas.getBoundingClientRect();
+    createOrb(e.clientX - rect.left, e.clientY - rect.top);
+    dragging = true;
+  });
+  window.addEventListener('mousemove', function(e){
+    if(!dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    createOrb(e.clientX - rect.left, e.clientY - rect.top);
+  });
+  window.addEventListener('mouseup', function(){ dragging = false; });
+
+  // controls
+  document.getElementById('toggleTrail').addEventListener('click', function(){
+    trail = !trail;
+    this.textContent = trail ? 'Toggle' : 'Toggle';
+  });
+  document.getElementById('clearBtn').addEventListener('click', function(){
+    orbs.length = 0;
+  });
+
+  function loop(){
+    requestAnimationFrame(loop);
+    if(trail){
+      ctx.fillStyle = 'rgba(0,0,0,0.12)';
+      ctx.fillRect(0,0,canvas.width/DPR, canvas.height/DPR);
+    } else {
+      ctx.clearRect(0,0,canvas.width/DPR, canvas.height/DPR);
+    }
+
+    for(let i=0;i<orbs.length;i++){
+      // smoother path by updating twice
+      orbs[i].update();
+      orbs[i].update();
+      orbs[i].draw();
+    }
+  }
+  loop();
+
+  // OPTIONAL: if there is a central image cat_center.png, show it instead of fallback
+  const imgDiv = document.querySelector('.cat .img');
+  const fallback = document.getElementById('fallbackCat');
+  // try to load cat_center.png
+  const testImg = new Image();
+  testImg.onload = function(){
+    // file exists and loaded -> show it
+    imgDiv.style.display = 'block';
+    imgDiv.style.backgroundImage = "url('cat_center.png')";
+    fallback.style.display = 'none';
+  };
+  testImg.onerror = function(){
+    // keep fallback visible
+    imgDiv.style.display = 'none';
+    fallback.style.display = 'block';
+  };
+  testImg.src = 'cat_center.png';
+
+})();
+</script>
+
+</body>
+</html>
